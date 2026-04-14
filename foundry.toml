@@ -1,0 +1,67 @@
+[profile.default]
+src = "contracts"
+test = "test"
+script = "script"
+out = "out"
+libs = ["node_modules"]
+solc_version = "0.8.24"
+evm_version = "shanghai"
+optimizer = true
+optimizer_runs = 200
+via_ir = true
+fs_permissions = [{ access = "read-write", path = "./" }]
+remappings = [
+  "@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/",
+  "@openzeppelin/contracts-upgradeable/=node_modules/@openzeppelin/contracts-upgradeable/",
+  "forge-std/=node_modules/forge-std/src/"
+]
+
+[rpc_endpoints]
+localhost = "http://127.0.0.1:8545"
+mainnet = "${MAINNET_RPC_URL}"
+sepolia = "${SEPOLIA_RPC_URL}"
+base = "${BASE_RPC_URL}"
+base_sepolia = "${BASE_SEPOLIA_RPC_URL}"
+polygon = "${POLYGON_RPC_URL}"
+polygon_amoy = "${POLYGON_AMOY_RPC_URL}"
+bnb = "${BNB_RPC_URL}"
+bnb_testnet = "${BNB_TESTNET_RPC_URL}"
+monad = "${MONAD_RPC_URL}"
+monad_testnet = "${MONAD_TESTNET_RPC_URL}"
+scroll = "${SCROLL_RPC_URL}"
+scroll_sepolia = "${SCROLL_SEPOLIA_RPC_URL}"
+gnosis = "${GNOSIS_RPC_URL}"
+gnosis_chiado = "${GNOSIS_CHIADO_RPC_URL}"
+arbitrum = "${ARBITRUM_RPC_URL}"
+arbitrum_sepolia = "${ARBITRUM_SEPOLIA_RPC_URL}"
+celo = "${CELO_RPC_URL}"
+celo_sepolia = "${CELO_SEPOLIA_RPC_URL}"
+taiko = "${TAIKO_RPC_URL}"
+taiko_hoodi = "${TAIKO_HOODI_RPC_URL}"
+megaeth = "${MEGAETH_RPC_URL}"
+megaeth_testnet = "${MEGAETH_TESTNET_RPC_URL}"
+linea = "${LINEA_RPC_URL}"
+linea_sepolia = "${LINEA_SEPOLIA_RPC_URL}"
+avalanche = "${AVALANCHE_RPC_URL}"
+avalanche_fuji = "${AVALANCHE_FUJI_RPC_URL}"
+op = "${OP_MAINNET_RPC_URL}"
+op_sepolia = "${OP_SEPOLIA_RPC_URL}"
+xlayer = "${XLAYER_RPC_URL}"
+xlayer_testnet = "${XLAYER_TESTNET_RPC_URL}"
+abstract = "${ABSTRACT_RPC_URL}"
+abstract_sepolia = "${ABSTRACT_SEPOLIA_RPC_URL}"
+mantle = "${MANTLE_RPC_URL}"
+mantle_sepolia = "${MANTLE_SEPOLIA_RPC_URL}"
+soneium = "${SONEIUM_RPC_URL}"
+soneium_minato = "${SONEIUM_MINATO_RPC_URL}"
+goat = "${GOAT_RPC_URL}"
+goat_testnet = "${GOAT_TESTNET_RPC_URL}"
+metis = "${METIS_RPC_URL}"
+metis_sepolia = "${METIS_SEPOLIA_RPC_URL}"
+hedera = "${HEDERA_RPC_URL}"
+hedera_testnet = "${HEDERA_TESTNET_RPC_URL}"
+skale_base = "${SKALE_BASE_RPC_URL}"
+skale_base_sepolia = "${SKALE_BASE_SEPOLIA_RPC_URL}"
+shape = "${SHAPE_RPC_URL}"
+shape_sepolia = "${SHAPE_SEPOLIA_RPC_URL}"
+arc_testnet = "${ARC_TESTNET_RPC_URL}"

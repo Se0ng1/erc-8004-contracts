@@ -1,4 +1,3 @@
-import hre from "hardhat";
 import { Hex, keccak256, getCreate2Address } from "viem";
 import fs from "fs";
 import {
@@ -7,6 +6,7 @@ import {
   getAddresses,
   getNetworkType,
 } from "./addresses";
+import { artifactBytecode, getScriptClients } from "./foundry";
 
 /**
  * Upgrade vanity proxies using PRE-EXISTING pre-signed transactions
@@ -15,15 +15,14 @@ import {
  * Pre-signed transactions must already exist in triple-presigned-upgrade-chain-{chainId}.json
  *
  * To generate pre-signed transactions first:
- *   npx hardhat run scripts/generate-triple-presigned-upgrade.ts --network <network>
+ *   tsx scripts/generate-triple-presigned-upgrade.ts --network <network>
  *
  * This script only loads and broadcasts the existing signatures.
  */
 async function main() {
-  const { viem } = await hre.network.connect();
-  const publicClient = await viem.getPublicClient();
-  const [deployer] = await viem.getWalletClients();
-  const chainId = await publicClient.getChainId();
+  const { publicClient, walletClient, chainId } = await getScriptClients({ requireWallet: true });
+  const deployer = walletClient!;
+  const account = deployer.account!;
 
   // Get network-specific config
   const networkType = getNetworkType(chainId);
@@ -34,28 +33,28 @@ async function main() {
   console.log("=".repeat(80));
   console.log("Network type:", networkType);
   console.log("Chain ID:", chainId);
-  console.log("Deployer:", deployer.account.address);
+  console.log("Deployer:", account.address);
   console.log("");
 
   // Calculate implementation addresses via CREATE2
-  const identityImplArtifact = await hre.artifacts.readArtifact("IdentityRegistryUpgradeable");
-  const reputationImplArtifact = await hre.artifacts.readArtifact("ReputationRegistryUpgradeable");
-  const validationImplArtifact = await hre.artifacts.readArtifact("ValidationRegistryUpgradeable");
+  const identityImplBytecode = artifactBytecode("IdentityRegistryUpgradeable");
+  const reputationImplBytecode = artifactBytecode("ReputationRegistryUpgradeable");
+  const validationImplBytecode = artifactBytecode("ValidationRegistryUpgradeable");
 
   const identityImplAddress = getCreate2Address({
     from: SAFE_SINGLETON_FACTORY,
     salt: IMPLEMENTATION_SALTS.identityRegistry,
-    bytecodeHash: keccak256(identityImplArtifact.bytecode as Hex),
+    bytecodeHash: keccak256(identityImplBytecode),
   });
   const reputationImplAddress = getCreate2Address({
     from: SAFE_SINGLETON_FACTORY,
     salt: IMPLEMENTATION_SALTS.reputationRegistry,
-    bytecodeHash: keccak256(reputationImplArtifact.bytecode as Hex),
+    bytecodeHash: keccak256(reputationImplBytecode),
   });
   const validationImplAddress = getCreate2Address({
     from: SAFE_SINGLETON_FACTORY,
     salt: IMPLEMENTATION_SALTS.validationRegistry,
-    bytecodeHash: keccak256(validationImplArtifact.bytecode as Hex),
+    bytecodeHash: keccak256(validationImplBytecode),
   });
 
   // Expected contracts with calculated implementation addresses
@@ -194,7 +193,7 @@ async function main() {
       `Expected file: ${packagePath}\n` +
       `\n` +
       `Please generate pre-signed transactions first:\n` +
-      `  npx hardhat run scripts/generate-triple-presigned-upgrade.ts --network localhost\n` +
+      `  tsx scripts/generate-triple-presigned-upgrade.ts --network localhost\n` +
       `\n` +
       `The pre-signed transactions must be generated BEFORE running this script.`
     );
@@ -248,6 +247,7 @@ async function main() {
     console.log("Funding owner with:", (Number(fundingNeeded) / 1e18).toFixed(6), "ETH");
 
     const fundTxHash = await deployer.sendTransaction({
+      account,
       to: ownerAddress,
       value: fundingNeeded,
       gas: 21000n,

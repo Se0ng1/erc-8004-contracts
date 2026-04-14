@@ -1,4 +1,3 @@
-import hre from "hardhat";
 import { getCreate2Address, encodeFunctionData, keccak256, Hex, encodeAbiParameters } from "viem";
 import { Worker } from "worker_threads";
 import * as os from "os";
@@ -7,6 +6,7 @@ import {
   TESTNET_MINIMAL_UUPS_SALT,
   MAINNET_MINIMAL_UUPS_SALT,
 } from "./addresses";
+import { artifactAbi, artifactBytecode } from "./foundry";
 
 /**
  * Select MinimalUUPS contract based on USE_MAINNET env var
@@ -23,7 +23,7 @@ async function getProxyBytecode(
   implementationAddress: string,
   initCalldata: Hex
 ): Promise<Hex> {
-  const proxyArtifact = await hre.artifacts.readArtifact("ERC1967Proxy");
+  const proxyBytecode = artifactBytecode("ERC1967Proxy");
 
   const constructorArgs = encodeAbiParameters(
     [
@@ -33,7 +33,7 @@ async function getProxyBytecode(
     [implementationAddress as `0x${string}`, initCalldata]
   );
 
-  const fullBytecode = (proxyArtifact.bytecode + constructorArgs.slice(2)) as Hex;
+  const fullBytecode = (proxyBytecode + constructorArgs.slice(2)) as Hex;
   return fullBytecode;
 }
 
@@ -161,8 +161,8 @@ async function main() {
   // Calculate MinimalUUPS address (single instance)
   console.log(`Step 0: Calculating ${MINIMAL_UUPS_CONTRACT} address...`);
   console.log(`   Mode: ${USE_MAINNET ? "MAINNET" : "TESTNET"}`);
-  const minimalUUPSArtifact = await hre.artifacts.readArtifact(MINIMAL_UUPS_CONTRACT);
-  const minimalUUPSBytecode = minimalUUPSArtifact.bytecode as Hex;
+  const minimalUUPSAbi = artifactAbi(MINIMAL_UUPS_CONTRACT);
+  const minimalUUPSBytecode = artifactBytecode(MINIMAL_UUPS_CONTRACT);
 
   const minimalUUPSAddress = getCreate2Address({
     from: SAFE_SINGLETON_FACTORY,
@@ -178,7 +178,7 @@ async function main() {
   console.log("Step 1: Finding salt for IdentityRegistry (0x8004A)...");
   console.log("        Initialize with: 0x0000000000000000000000000000000000000000");
   const identityInitData = encodeFunctionData({
-    abi: minimalUUPSArtifact.abi,
+    abi: minimalUUPSAbi,
     functionName: "initialize",
     args: ["0x0000000000000000000000000000000000000000" as `0x${string}`]
   });
@@ -201,7 +201,7 @@ async function main() {
   console.log("Step 3: Finding salt for ReputationRegistry (0x8004B)...");
   console.log(`        Initialize with: ${identityProxyAddress}`);
   const reputationInitData = encodeFunctionData({
-    abi: minimalUUPSArtifact.abi,
+    abi: minimalUUPSAbi,
     functionName: "initialize",
     args: [identityProxyAddress]
   });
@@ -214,7 +214,7 @@ async function main() {
   console.log("Step 4: Finding salt for ValidationRegistry (0x8004C)...");
   console.log(`        Initialize with: ${identityProxyAddress}`);
   const validationInitData = encodeFunctionData({
-    abi: minimalUUPSArtifact.abi,
+    abi: minimalUUPSAbi,
     functionName: "initialize",
     args: [identityProxyAddress]
   });

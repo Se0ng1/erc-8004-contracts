@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
-interface IIdentityRegistry {
+interface IValidationIdentityRegistry {
     function ownerOf(uint256 tokenId) external view returns (address);
     function getApproved(uint256 tokenId) external view returns (address);
     function isApprovedForAll(address owner, address operator) external view returns (bool);
@@ -86,7 +86,7 @@ contract ValidationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
         require($.validations[requestHash].validatorAddress == address(0), "exists");
 
         // Check permission: caller must be owner or approved operator
-        IIdentityRegistry registry = IIdentityRegistry(_identityRegistry);
+        IValidationIdentityRegistry registry = IValidationIdentityRegistry(_identityRegistry);
         address owner = registry.ownerOf(agentId);
         require(
             msg.sender == owner ||

@@ -218,10 +218,10 @@ Run tests:
 npm test
 ```
 
-Or via Hardhat:
+Or directly via Foundry:
 
 ```shell
-npx hardhat test
+forge test
 ```
 
 ## Core concepts (from the spec)
@@ -361,7 +361,7 @@ contracts/
 └── ValidationRegistryUpgradeable.sol   - Validation request/response (upgradeable)
 
 abis/                                  - Contract ABIs for integrations
-ignition/modules/                       - Deployment modules
+foundry.toml                            - Foundry configuration
 scripts/                                - Deployment/upgrade utilities
 test/                                   - Test suite
 ERC8004SPEC.md                           - Protocol spec used as source-of-truth for docs
@@ -371,7 +371,7 @@ ERC8004SPEC.md                           - Protocol spec used as source-of-truth
 
 - [ERC-8004 Full Specification](./ERC8004SPEC.md)
 - [ERC-8004 Website](https://www.8004.org)
-- [Hardhat Documentation](https://hardhat.org/docs)
+- [Foundry Documentation](https://book.getfoundry.sh/)
 - [EIP-721: Non-Fungible Token Standard](https://eips.ethereum.org/EIPS/eip-721)
 
 ## License

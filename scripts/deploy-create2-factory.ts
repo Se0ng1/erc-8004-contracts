@@ -1,5 +1,5 @@
-import hre from "hardhat";
 import { getSingletonFactoryInfo } from "@safe-global/safe-singleton-factory";
+import { getScriptClients } from "./foundry";
 
 /**
  * Deploys the Create2 Deployer (Singleton Factory) at 0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7
@@ -16,12 +16,9 @@ import { getSingletonFactoryInfo } from "@safe-global/safe-singleton-factory";
 const FACTORY_ADDRESS = "0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7" as const;
 
 async function main() {
-    // Always connect to localhost
-    const { viem } = await hre.network.connect("localhost");
-    const publicClient = await viem.getPublicClient();
-    const [deployer] = await viem.getWalletClients();
-
-    const chainId = await publicClient.getChainId();
+    const { publicClient, walletClient, chainId } = await getScriptClients({ requireWallet: true });
+    const deployer = walletClient!;
+    const account = deployer.account!;
 
     console.log("=".repeat(80));
     console.log("Deploying Create2 Deployer (Singleton Factory) - LOCALHOST");
@@ -55,6 +52,7 @@ async function main() {
     // Fund the deployer account
     const fundingAmount = BigInt(factoryInfo.gasLimit) * BigInt(factoryInfo.gasPrice);
     const fundTxHash = await deployer.sendTransaction({
+        account,
         to: factoryInfo.signerAddress as `0x${string}`,
         value: fundingAmount,
         gas: 21000n,

@@ -1,33 +1,18 @@
-import hre from "hardhat";
-import { createPublicClient, http } from "viem";
 import {
   EXPECTED_OWNER,
   getAddresses,
   getNetworkType,
 } from "./addresses";
-import { customChains } from "./custom-chains";
+import { artifactAbi, getScriptClients } from "./foundry";
 
 /**
  * Verify vanity deployment
  * This script checks that all contracts are properly deployed and configured
  */
 async function main() {
-  const networkIdx = process.argv.indexOf("--network");
-  const networkName = networkIdx !== -1 ? process.argv[networkIdx + 1] : undefined;
-  const custom = networkName ? customChains[networkName] : undefined;
-
-  let publicClient: any;
-
-  if (custom) {
-    const rpcUrl = custom.rpcUrls.default.http[0];
-    publicClient = createPublicClient({ chain: custom, transport: http(rpcUrl) });
-  } else {
-    const { viem } = await hre.network.connect() as any;
-    publicClient = await viem.getPublicClient();
-  }
+  const { publicClient, chainId } = await getScriptClients();
 
   // Get chainId and network-specific config
-  const chainId = await publicClient.getChainId();
   const networkType = getNetworkType(chainId);
   const EXPECTED_ADDRESSES = getAddresses(chainId);
 
@@ -38,9 +23,9 @@ async function main() {
   console.log("");
 
   // Load ABIs once
-  const identityArtifact = await hre.artifacts.readArtifact("IdentityRegistryUpgradeable");
-  const reputationArtifact = await hre.artifacts.readArtifact("ReputationRegistryUpgradeable");
-  const validationArtifact = await hre.artifacts.readArtifact("ValidationRegistryUpgradeable");
+  const identityAbi = artifactAbi("IdentityRegistryUpgradeable");
+  const reputationAbi = artifactAbi("ReputationRegistryUpgradeable");
+  const validationAbi = artifactAbi("ValidationRegistryUpgradeable");
 
   let allChecksPassed = true;
 
@@ -62,7 +47,7 @@ async function main() {
   try {
     const identityVersion = await publicClient.readContract({
       address: EXPECTED_ADDRESSES.identityRegistry as `0x${string}`,
-      abi: identityArtifact.abi,
+      abi: identityAbi,
       functionName: "getVersion",
       args: [],
     });
@@ -70,7 +55,7 @@ async function main() {
 
     const reputationVersion = await publicClient.readContract({
       address: EXPECTED_ADDRESSES.reputationRegistry as `0x${string}`,
-      abi: reputationArtifact.abi,
+      abi: reputationAbi,
       functionName: "getVersion",
       args: [],
     });
@@ -78,7 +63,7 @@ async function main() {
 
     const validationVersion = await publicClient.readContract({
       address: EXPECTED_ADDRESSES.validationRegistry as `0x${string}`,
-      abi: validationArtifact.abi,
+      abi: validationAbi,
       functionName: "getVersion",
       args: [],
     });
@@ -94,7 +79,7 @@ async function main() {
   try {
     const identityOwner = await publicClient.readContract({
       address: EXPECTED_ADDRESSES.identityRegistry as `0x${string}`,
-      abi: identityArtifact.abi,
+      abi: identityAbi,
       functionName: "owner",
       args: [],
     }) as `0x${string}`;
@@ -107,7 +92,7 @@ async function main() {
 
     const reputationOwner = await publicClient.readContract({
       address: EXPECTED_ADDRESSES.reputationRegistry as `0x${string}`,
-      abi: reputationArtifact.abi,
+      abi: reputationAbi,
       functionName: "owner",
       args: [],
     }) as `0x${string}`;
@@ -120,7 +105,7 @@ async function main() {
 
     const validationOwner = await publicClient.readContract({
       address: EXPECTED_ADDRESSES.validationRegistry as `0x${string}`,
-      abi: validationArtifact.abi,
+      abi: validationAbi,
       functionName: "owner",
       args: [],
     }) as `0x${string}`;
@@ -164,7 +149,7 @@ async function main() {
   try {
     const reputationIdentityRef = await publicClient.readContract({
       address: EXPECTED_ADDRESSES.reputationRegistry as `0x${string}`,
-      abi: reputationArtifact.abi,
+      abi: reputationAbi,
       functionName: "getIdentityRegistry",
       args: [],
     }) as `0x${string}`;
@@ -179,7 +164,7 @@ async function main() {
 
     const validationIdentityRef = await publicClient.readContract({
       address: EXPECTED_ADDRESSES.validationRegistry as `0x${string}`,
-      abi: validationArtifact.abi,
+      abi: validationAbi,
       functionName: "getIdentityRegistry",
       args: [],
     }) as `0x${string}`;

@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
-interface IIdentityRegistry {
+interface IReputationIdentityRegistry {
     function isAuthorizedOrOwner(address spender, uint256 agentId) external view returns (bool);
 }
 
@@ -107,7 +107,7 @@ contract ReputationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
 
         // SECURITY: Prevent self-feedback from owner and operators
         // Also reverts with ERC721NonexistentToken if agent doesn't exist
-        require(!IIdentityRegistry(_identityRegistry).isAuthorizedOrOwner(msg.sender, agentId), "Self-feedback not allowed");
+        require(!IReputationIdentityRegistry(_identityRegistry).isAuthorizedOrOwner(msg.sender, agentId), "Self-feedback not allowed");
 
         ReputationRegistryStorage storage $ = _getReputationRegistryStorage();
 

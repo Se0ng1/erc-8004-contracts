@@ -33,7 +33,7 @@ export const MAINNET_CHAIN_IDS = [
  * Testnet chainIds - must be explicitly listed
  */
 export const TESTNET_CHAIN_IDS = [
-  31337,    // Hardhat local
+  31337,    // Anvil local
   11155111, // Sepolia
   84532,    // Base Sepolia
   421614,   // Arbitrum Sepolia

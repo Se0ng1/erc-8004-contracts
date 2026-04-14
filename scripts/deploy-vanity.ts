@@ -1,8 +1,4 @@
-import hre from "hardhat";
-import { encodeAbiParameters, encodeFunctionData, Hex, keccak256, getCreate2Address, createPublicClient, createWalletClient, http } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { customChains } from "./custom-chains";
-import dotenv from "dotenv";
+import { encodeAbiParameters, encodeFunctionData, Hex, keccak256, getCreate2Address } from "viem";
 import {
   SAFE_SINGLETON_FACTORY,
   IMPLEMENTATION_SALTS,
@@ -12,9 +8,7 @@ import {
   getMinimalUUPSSalt,
   getNetworkType,
 } from "./addresses";
-
-// Load environment variables from .env file
-dotenv.config();
+import { artifactAbi, artifactBytecode, getScriptClients } from "./foundry";
 
 /**
  * Gets the full deployment bytecode for ERC1967Proxy
@@ -23,7 +17,7 @@ async function getProxyBytecode(
   implementationAddress: string,
   initCalldata: Hex
 ): Promise<Hex> {
-  const proxyArtifact = await hre.artifacts.readArtifact("ERC1967Proxy");
+  const proxyBytecode = artifactBytecode("ERC1967Proxy");
 
   const constructorArgs = encodeAbiParameters(
     [
@@ -33,7 +27,7 @@ async function getProxyBytecode(
     [implementationAddress as `0x${string}`, initCalldata]
   );
 
-  return (proxyArtifact.bytecode + constructorArgs.slice(2)) as Hex;
+  return (proxyBytecode + constructorArgs.slice(2)) as Hex;
 }
 
 /**
@@ -55,28 +49,11 @@ async function checkCreate2FactoryDeployed(publicClient: any): Promise<boolean> 
  * 3. Upgrade proxies to point to implementations and initialize
  */
 async function main() {
-  const networkIdx = process.argv.indexOf("--network");
-  const networkName = networkIdx !== -1 ? process.argv[networkIdx + 1] : undefined;
-  const custom = networkName ? customChains[networkName] : undefined;
-
-  let publicClient: any;
-  let deployer: any;
-
-  if (custom) {
-    const rpcUrl = custom.rpcUrls.default.http[0];
-    const pkEnv = `${networkName!.replace(/([A-Z])/g, "_$1").toUpperCase()}_PRIVATE_KEY`;
-    const pk = process.env[pkEnv];
-    if (!pk) throw new Error(`Set ${pkEnv} in your .env`);
-    publicClient = createPublicClient({ chain: custom, transport: http(rpcUrl) });
-    deployer = createWalletClient({ account: privateKeyToAccount(pk as Hex), chain: custom, transport: http(rpcUrl) });
-  } else {
-    const { viem } = await hre.network.connect();
-    publicClient = await viem.getPublicClient();
-    [deployer] = await viem.getWalletClients();
-  }
+  const { networkName, publicClient, walletClient, chainId } = await getScriptClients({ requireWallet: true });
+  const deployer = walletClient!;
+  const account = deployer.account!;
 
   if (!deployer) {
-    const networkName = hre.network.name;
     console.error("");
     console.error("❌ ERROR: No wallet configured for this network.");
     console.error("");
@@ -88,7 +65,6 @@ async function main() {
   }
 
   // Get chainId and network-specific config
-  const chainId = await publicClient.getChainId();
   const networkType = getNetworkType(chainId);
   const EXPECTED_ADDRESSES = getAddresses(chainId);
   const VANITY_SALTS = getVanitySalts(chainId);
@@ -100,7 +76,7 @@ async function main() {
   console.log("Network type:", networkType);
   console.log("Chain ID:", chainId);
   console.log("MinimalUUPS contract:", MINIMAL_UUPS_CONTRACT);
-  console.log("Deployer address:", deployer.account.address);
+  console.log("Deployer address:", account.address);
   console.log("");
 
   // Step 0: Check if SAFE singleton CREATE2 factory is deployed
@@ -111,7 +87,7 @@ async function main() {
     console.error("❌ ERROR: SAFE singleton CREATE2 factory not found!");
     console.error(`   Expected address: ${SAFE_SINGLETON_FACTORY}`);
     console.error("");
-    console.error("Please run: npx hardhat run scripts/deploy-create2-factory.ts --network <network>");
+    console.error("Please run: npm run local:factory");
     throw new Error("SAFE singleton CREATE2 factory not deployed");
   }
 
@@ -126,8 +102,8 @@ async function main() {
   console.log("=======================================================");
   console.log("");
 
-  const minimalUUPSArtifact = await hre.artifacts.readArtifact(MINIMAL_UUPS_CONTRACT);
-  const minimalUUPSBytecode = minimalUUPSArtifact.bytecode as Hex;
+  const minimalUUPSAbi = artifactAbi(MINIMAL_UUPS_CONTRACT);
+  const minimalUUPSBytecode = artifactBytecode(MINIMAL_UUPS_CONTRACT);
 
   // Calculate MinimalUUPS address
   const minimalUUPSAddress = getCreate2Address({
@@ -143,6 +119,7 @@ async function main() {
     const deployData = (MINIMAL_UUPS_SALT + minimalUUPSBytecode.slice(2)) as Hex;
 
     const txHash = await deployer.sendTransaction({
+      account,
       to: SAFE_SINGLETON_FACTORY,
       data: deployData,
     });
@@ -171,12 +148,13 @@ async function main() {
   if (!identityProxyCode || identityProxyCode === "0x") {
     console.log("2. Deploying IdentityRegistry proxy (0x8004A...)...");
     const identityInitData = encodeFunctionData({
-      abi: minimalUUPSArtifact.abi,
+      abi: minimalUUPSAbi,
       functionName: "initialize",
       args: ["0x0000000000000000000000000000000000000000" as `0x${string}`]
     });
     const identityProxyBytecode = await getProxyBytecode(minimalUUPSAddress, identityInitData);
     const identityProxyTxHash = await deployer.sendTransaction({
+      account,
       to: SAFE_SINGLETON_FACTORY,
       data: (VANITY_SALTS.identityRegistry + identityProxyBytecode.slice(2)) as Hex,
     });
@@ -197,12 +175,13 @@ async function main() {
   if (!reputationProxyCode || reputationProxyCode === "0x") {
     console.log("3. Deploying ReputationRegistry proxy (0x8004B...)...");
     const reputationInitData = encodeFunctionData({
-      abi: minimalUUPSArtifact.abi,
+      abi: minimalUUPSAbi,
       functionName: "initialize",
       args: [identityProxyAddress]
     });
     const reputationProxyBytecode = await getProxyBytecode(minimalUUPSAddress, reputationInitData);
     const reputationProxyTxHash = await deployer.sendTransaction({
+      account,
       to: SAFE_SINGLETON_FACTORY,
       data: (VANITY_SALTS.reputationRegistry + reputationProxyBytecode.slice(2)) as Hex,
     });
@@ -223,12 +202,13 @@ async function main() {
   if (!validationProxyCode || validationProxyCode === "0x") {
     console.log("4. Deploying ValidationRegistry proxy (0x8004C...)...");
     const validationInitData = encodeFunctionData({
-      abi: minimalUUPSArtifact.abi,
+      abi: minimalUUPSAbi,
       functionName: "initialize",
       args: [identityProxyAddress]
     });
     const validationProxyBytecode = await getProxyBytecode(minimalUUPSAddress, validationInitData);
     const validationProxyTxHash = await deployer.sendTransaction({
+      account,
       to: SAFE_SINGLETON_FACTORY,
       data: (VANITY_SALTS.validationRegistry + validationProxyBytecode.slice(2)) as Hex,
     });
@@ -250,8 +230,7 @@ async function main() {
 
   // Deploy IdentityRegistry implementation via CREATE2
   console.log("5. Deploying IdentityRegistry implementation via CREATE2...");
-  const identityImplArtifact = await hre.artifacts.readArtifact("IdentityRegistryUpgradeable");
-  const identityImplBytecode = identityImplArtifact.bytecode as Hex;
+  const identityImplBytecode = artifactBytecode("IdentityRegistryUpgradeable");
   const identityImplDeployData = (IMPLEMENTATION_SALTS.identityRegistry + identityImplBytecode.slice(2)) as Hex;
 
   // Calculate the CREATE2 address
@@ -266,6 +245,7 @@ async function main() {
 
   if (!identityImplCode || identityImplCode === "0x") {
     const identityImplTxHash = await deployer.sendTransaction({
+      account,
       to: SAFE_SINGLETON_FACTORY,
       data: identityImplDeployData,
     });
@@ -278,8 +258,7 @@ async function main() {
 
   // Deploy ReputationRegistry implementation via CREATE2
   console.log("6. Deploying ReputationRegistry implementation via CREATE2...");
-  const reputationImplArtifact = await hre.artifacts.readArtifact("ReputationRegistryUpgradeable");
-  const reputationImplBytecode = reputationImplArtifact.bytecode as Hex;
+  const reputationImplBytecode = artifactBytecode("ReputationRegistryUpgradeable");
   const reputationImplDeployData = (IMPLEMENTATION_SALTS.reputationRegistry + reputationImplBytecode.slice(2)) as Hex;
 
   // Calculate the CREATE2 address
@@ -294,6 +273,7 @@ async function main() {
 
   if (!reputationImplCode || reputationImplCode === "0x") {
     const reputationImplTxHash = await deployer.sendTransaction({
+      account,
       to: SAFE_SINGLETON_FACTORY,
       data: reputationImplDeployData,
     });
@@ -306,8 +286,7 @@ async function main() {
 
   // Deploy ValidationRegistry implementation via CREATE2
   console.log("7. Deploying ValidationRegistry implementation via CREATE2...");
-  const validationImplArtifact = await hre.artifacts.readArtifact("ValidationRegistryUpgradeable");
-  const validationImplBytecode = validationImplArtifact.bytecode as Hex;
+  const validationImplBytecode = artifactBytecode("ValidationRegistryUpgradeable");
   const validationImplDeployData = (IMPLEMENTATION_SALTS.validationRegistry + validationImplBytecode.slice(2)) as Hex;
 
   // Calculate the CREATE2 address
@@ -322,6 +301,7 @@ async function main() {
 
   if (!validationImplCode || validationImplCode === "0x") {
     const validationImplTxHash = await deployer.sendTransaction({
+      account,
       to: SAFE_SINGLETON_FACTORY,
       data: validationImplDeployData,
     });
@@ -363,10 +343,10 @@ async function main() {
   console.log("=".repeat(80));
   console.log("");
   console.log("1. Owner can generate 3 pre-signed upgrade transactions:");
-  console.log("   npx hardhat run scripts/generate-triple-presigned-upgrade.ts --network <network>");
+  console.log("   tsx scripts/generate-triple-presigned-upgrade.ts --network <network>");
   console.log("");
   console.log("2. Broadcast all 3 pre-signed transactions:");
-  console.log("   npx hardhat run scripts/broadcast-triple-presigned-upgrade.ts --network <network>");
+  console.log("   tsx scripts/upgrade-vanity-presigned.ts --network <network>");
   console.log("");
   console.log("3. Or upgrade manually (requires owner private key):");
   console.log("   npm run upgrade:vanity -- --network <network>");

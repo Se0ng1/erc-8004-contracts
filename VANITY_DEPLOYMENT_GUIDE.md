@@ -51,26 +51,26 @@ Owner:              0x547289319C3e6aedB179C0b8e8aF0B5ACd062603
 
 ```bash
 # 1. Deploy CREATE2 factory (if not already on network)
-npx hardhat run scripts/deploy-create2-factory.ts --network <network>
+npm run deploy:factory -- --network <network>
 
 # 2. Deploy all contracts (MinimalUUPS + proxies + implementations)
-npx hardhat run scripts/deploy-vanity.ts --network <network>
+npm run deploy:vanity -- --network <network>
 
 # 3. Generate pre-signed upgrade transactions (requires OWNER_PRIVATE_KEY in .env)
-npx hardhat run scripts/generate-triple-presigned-upgrade.ts --network <network>
+npm run generate:upgrade -- --network <network>
 
 # 4. Broadcast the upgrades
-npx hardhat run scripts/upgrade-vanity-presigned.ts --network <network>
+npm run upgrade:vanity:presigned -- --network <network>
 
 # 5. Verify everything
-npx hardhat run scripts/verify-vanity.ts --network <network>
+npm run verify:vanity -- --network <network>
 ```
 
 ### For Localhost Testing
 
 ```bash
 # Start local node
-npx hardhat node
+anvil
 
 # Run full deployment (in another terminal)
 npm run local

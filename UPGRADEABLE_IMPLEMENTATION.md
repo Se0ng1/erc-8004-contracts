@@ -97,7 +97,7 @@ See [VANITY_DEPLOYMENT_GUIDE.md](./VANITY_DEPLOYMENT_GUIDE.md) for complete depl
 
 ```bash
 # Start local node
-npx hardhat node
+anvil
 
 # Run full deployment (in another terminal)
 npm run local
@@ -107,19 +107,19 @@ npm run local
 
 ```bash
 # 1. Deploy CREATE2 factory (if needed)
-npx hardhat run scripts/deploy-create2-factory.ts --network <network>
+npm run deploy:factory -- --network <network>
 
 # 2. Deploy all contracts
-npx hardhat run scripts/deploy-vanity.ts --network <network>
+npm run deploy:vanity -- --network <network>
 
 # 3. Generate pre-signed upgrades (requires OWNER_PRIVATE_KEY in .env)
-npx hardhat run scripts/generate-triple-presigned-upgrade.ts --network <network>
+npm run generate:upgrade -- --network <network>
 
 # 4. Broadcast upgrades
-npx hardhat run scripts/upgrade-vanity-presigned.ts --network <network>
+npm run upgrade:vanity:presigned -- --network <network>
 
 # 5. Verify
-npx hardhat run scripts/verify-vanity.ts --network <network>
+npm run verify:vanity -- --network <network>
 ```
 
 ## Usage
@@ -128,17 +128,11 @@ npx hardhat run scripts/verify-vanity.ts --network <network>
 
 Always interact with the **proxy addresses**, never the implementation addresses:
 
-```typescript
-import hre from "hardhat";
-
-// Get contract instance through proxy
-const identityRegistry = await hre.viem.getContractAt(
-  "IdentityRegistryUpgradeable",
-  "0x8004A818BFB912233c491871b3d84c89A494BD9e"  // Use proxy address
-);
-
-// Use normally
-const txHash = await identityRegistry.write.register(["ipfs://agent"]);
+```bash
+cast send 0x8004A818BFB912233c491871b3d84c89A494BD9e \
+  "register(string)" "ipfs://agent" \
+  --rpc-url "$RPC_URL" \
+  --private-key "$PRIVATE_KEY"
 ```
 
 ### Upgrading Contracts

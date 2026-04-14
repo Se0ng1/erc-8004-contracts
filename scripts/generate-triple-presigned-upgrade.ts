@@ -1,7 +1,5 @@
-import hre from "hardhat";
 import { encodeFunctionData, Hex, parseGwei, keccak256, getCreate2Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import dotenv from "dotenv";
 import fs from "fs";
 import {
   SAFE_SINGLETON_FACTORY,
@@ -9,18 +7,14 @@ import {
   getAddresses,
   getNetworkType,
 } from "./addresses";
-
-// Load environment variables
-dotenv.config();
+import { artifactAbi, artifactBytecode, getScriptClients, normalizePrivateKey } from "./foundry";
 
 /**
  * Generate 3 pre-signed upgrade transactions
  * Simple approach: one transaction per upgrade, sequential nonces
  */
 async function main() {
-  const { viem } = await hre.network.connect();
-  const publicClient = await viem.getPublicClient();
-  const chainId = await publicClient.getChainId();
+  const { publicClient, chainId } = await getScriptClients();
 
   // Get network-specific config
   const networkType = getNetworkType(chainId);
@@ -34,25 +28,28 @@ async function main() {
   console.log("");
 
   // Calculate implementation addresses via CREATE2
-  const identityImplArtifact = await hre.artifacts.readArtifact("IdentityRegistryUpgradeable");
-  const reputationImplArtifact = await hre.artifacts.readArtifact("ReputationRegistryUpgradeable");
-  const validationImplArtifact = await hre.artifacts.readArtifact("ValidationRegistryUpgradeable");
+  const identityImplAbi = artifactAbi("IdentityRegistryUpgradeable");
+  const reputationImplAbi = artifactAbi("ReputationRegistryUpgradeable");
+  const validationImplAbi = artifactAbi("ValidationRegistryUpgradeable");
+  const identityImplBytecode = artifactBytecode("IdentityRegistryUpgradeable");
+  const reputationImplBytecode = artifactBytecode("ReputationRegistryUpgradeable");
+  const validationImplBytecode = artifactBytecode("ValidationRegistryUpgradeable");
 
   const IMPLEMENTATIONS = {
     identityRegistry: getCreate2Address({
       from: SAFE_SINGLETON_FACTORY,
       salt: IMPLEMENTATION_SALTS.identityRegistry,
-      bytecodeHash: keccak256(identityImplArtifact.bytecode as Hex),
+      bytecodeHash: keccak256(identityImplBytecode),
     }),
     reputationRegistry: getCreate2Address({
       from: SAFE_SINGLETON_FACTORY,
       salt: IMPLEMENTATION_SALTS.reputationRegistry,
-      bytecodeHash: keccak256(reputationImplArtifact.bytecode as Hex),
+      bytecodeHash: keccak256(reputationImplBytecode),
     }),
     validationRegistry: getCreate2Address({
       from: SAFE_SINGLETON_FACTORY,
       salt: IMPLEMENTATION_SALTS.validationRegistry,
-      bytecodeHash: keccak256(validationImplArtifact.bytecode as Hex),
+      bytecodeHash: keccak256(validationImplBytecode),
     }),
   };
 
@@ -68,11 +65,7 @@ async function main() {
     throw new Error("OWNER_PRIVATE_KEY not found in environment variables");
   }
 
-  if (!ownerPrivateKey.startsWith("0x")) {
-    ownerPrivateKey = `0x${ownerPrivateKey}`;
-  }
-
-  const ownerAccount = privateKeyToAccount(ownerPrivateKey as `0x${string}`);
+  const ownerAccount = privateKeyToAccount(normalizePrivateKey(ownerPrivateKey));
   console.log("Owner address:", ownerAccount.address);
   console.log("");
 
@@ -85,24 +78,24 @@ async function main() {
   console.log("");
 
   // Get MinimalUUPS artifact for upgradeToAndCall
-  const minimalUUPSArtifact = await hre.artifacts.readArtifact("MinimalUUPS");
+  const minimalUUPSAbi = artifactAbi("MinimalUUPS");
 
   // Gas settings
   const gasPrice = parseGwei("20"); // 20 gwei
 
   // Encode initialize() calls for each implementation
   const identityInitData = encodeFunctionData({
-    abi: identityImplArtifact.abi,
+    abi: identityImplAbi,
     functionName: "initialize",
     args: []
   });
   const reputationInitData = encodeFunctionData({
-    abi: reputationImplArtifact.abi,
+    abi: reputationImplAbi,
     functionName: "initialize",
     args: [PROXIES.identityRegistry]
   });
   const validationInitData = encodeFunctionData({
-    abi: validationImplArtifact.abi,
+    abi: validationImplAbi,
     functionName: "initialize",
     args: [PROXIES.identityRegistry]
   });
@@ -139,7 +132,7 @@ async function main() {
 
     // Encode upgradeToAndCall with initialize() data
     const upgradeData = encodeFunctionData({
-      abi: minimalUUPSArtifact.abi,
+      abi: minimalUUPSAbi,
       functionName: "upgradeToAndCall",
       args: [tx.implementation, tx.initData],
     });
@@ -226,7 +219,7 @@ async function main() {
   console.log("  Owner address:", ownerAccount.address);
   console.log("");
   console.log("📋 TO BROADCAST:");
-  console.log("  npx hardhat run scripts/broadcast-triple-presigned-upgrade.ts --network <network>");
+  console.log("  tsx scripts/upgrade-vanity-presigned.ts --network <network>");
   console.log("");
   console.log("=".repeat(80));
 

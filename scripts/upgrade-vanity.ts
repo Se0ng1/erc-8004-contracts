@@ -1,17 +1,13 @@
 import { execSync } from "child_process";
-import hre from "hardhat";
-import { encodeFunctionData, Hex, keccak256, serializeTransaction, getCreate2Address, createPublicClient, createWalletClient, http } from "viem";
+import { bytesToHex, encodeFunctionData, Hex, keccak256, serializeTransaction, getCreate2Address, createWalletClient, http } from "viem";
 import { privateKeyToAccount, toAccount } from "viem/accounts";
-import dotenv from "dotenv";
 import {
   SAFE_SINGLETON_FACTORY,
   IMPLEMENTATION_SALTS,
   getAddresses,
   getNetworkType,
 } from "./addresses";
-import { customChains } from "./custom-chains";
-// Load environment variables from .env file
-dotenv.config();
+import { artifactAbi, artifactBytecode, getScriptClients, normalizePrivateKey } from "./foundry";
 
 /**
  * Upgrade vanity proxies to final implementations
@@ -25,22 +21,9 @@ dotenv.config();
  * Each upgrade also initializes the new implementation
  */
 async function main() {
-  const networkIdx = process.argv.indexOf("--network");
-  const networkName = networkIdx !== -1 ? process.argv[networkIdx + 1] : undefined;
-  const custom = networkName ? customChains[networkName] : undefined;
-
-  let publicClient: any;
-
-  if (custom) {
-    const rpcUrl = custom.rpcUrls.default.http[0];
-    publicClient = createPublicClient({ chain: custom, transport: http(rpcUrl) });
-  } else {
-    const { viem } = await hre.network.connect();
-    publicClient = await viem.getPublicClient();
-  }
+  const { publicClient, chainId, chain, rpcUrl } = await getScriptClients();
 
   // Get chainId and network-specific config
-  const chainId = await publicClient.getChainId();
   const networkType = getNetworkType(chainId);
   const EXPECTED_ADDRESSES = getAddresses(chainId);
 
@@ -57,12 +40,7 @@ async function main() {
   if (ownerPrivateKey) {
     console.log("WARNING: Using OWNER_PRIVATE_KEY from .env - storing private keys in .env is unsafe. Consider using HSM instead.");
     console.log("");
-    let pk = ownerPrivateKey;
-    if (!pk.startsWith("0x")) pk = `0x${pk}`;
-    if (pk.length !== 66 || !/^0x[0-9a-fA-F]{64}$/.test(pk)) {
-      throw new Error(`Invalid OWNER_PRIVATE_KEY format. Expected 0x followed by 64 hex characters, got: ${pk.length} characters`);
-    }
-    ownerAccount = privateKeyToAccount(pk as `0x${string}`);
+    ownerAccount = privateKeyToAccount(normalizePrivateKey(ownerPrivateKey));
   } else {
     console.log("INFO: Signing using HSM (slot 1)");
     console.log("");
@@ -85,58 +63,60 @@ async function main() {
     ownerAccount = toAccount({
       address: hsmAddress,
       async signMessage({ message }) {
-        const msg = typeof message === "string" ? new TextEncoder().encode(message) : message;
-        const hash = keccak256(msg as Hex);
+        const rawMessage = typeof message === "string"
+          ? new TextEncoder().encode(message)
+          : "raw" in message
+            ? message.raw
+            : message;
+        const msg = typeof rawMessage === "string" ? rawMessage as Hex : bytesToHex(rawMessage);
+        const hash = keccak256(msg);
         const raw = hash.startsWith("0x") ? hash.slice(2) : hash;
         const result = JSON.parse(hsm(`sign ${raw}`));
         return `${result.r}${(result.s as string).slice(2)}${(result.v - 27).toString(16).padStart(2, "0")}` as Hex;
       },
       async signTransaction(tx, { serializer = serializeTransaction } = {}) {
-        const serialized = serializer(tx);
+        const serialized = await serializer(tx);
         const hash = keccak256(serialized);
         const raw = hash.startsWith("0x") ? hash.slice(2) : hash;
         const result = JSON.parse(hsm(`sign ${raw}`));
-        return serializer(tx, { r: result.r, s: result.s, v: BigInt(result.v) });
+        return await serializer(tx, { r: result.r, s: result.s, v: BigInt(result.v) });
       },
       async signTypedData() {
         throw new Error("signTypedData not implemented");
       },
     });
   }
-  const ownerWallet = custom
-    ? createWalletClient({
-        account: ownerAccount,
-        chain: custom,
-        transport: http(custom.rpcUrls.default.http[0]),
-      })
-    : createWalletClient({
-        account: ownerAccount,
-        chain: publicClient.chain,
-        transport: http(),
-      });
+  const ownerWallet = createWalletClient({
+    account: ownerAccount,
+    chain,
+    transport: http(rpcUrl),
+  });
 
   console.log("Owner address:", ownerAccount.address);
   console.log("");
 
   // Calculate implementation addresses via CREATE2
-  const identityImplArtifact = await hre.artifacts.readArtifact("IdentityRegistryUpgradeable");
-  const reputationImplArtifact = await hre.artifacts.readArtifact("ReputationRegistryUpgradeable");
-  const validationImplArtifact = await hre.artifacts.readArtifact("ValidationRegistryUpgradeable");
+  const identityImplAbi = artifactAbi("IdentityRegistryUpgradeable");
+  const reputationImplAbi = artifactAbi("ReputationRegistryUpgradeable");
+  const validationImplAbi = artifactAbi("ValidationRegistryUpgradeable");
+  const identityImplBytecode = artifactBytecode("IdentityRegistryUpgradeable");
+  const reputationImplBytecode = artifactBytecode("ReputationRegistryUpgradeable");
+  const validationImplBytecode = artifactBytecode("ValidationRegistryUpgradeable");
 
   const identityImpl = getCreate2Address({
     from: SAFE_SINGLETON_FACTORY,
     salt: IMPLEMENTATION_SALTS.identityRegistry,
-    bytecodeHash: keccak256(identityImplArtifact.bytecode as Hex),
+    bytecodeHash: keccak256(identityImplBytecode),
   });
   const reputationImpl = getCreate2Address({
     from: SAFE_SINGLETON_FACTORY,
     salt: IMPLEMENTATION_SALTS.reputationRegistry,
-    bytecodeHash: keccak256(reputationImplArtifact.bytecode as Hex),
+    bytecodeHash: keccak256(reputationImplBytecode),
   });
   const validationImpl = getCreate2Address({
     from: SAFE_SINGLETON_FACTORY,
     salt: IMPLEMENTATION_SALTS.validationRegistry,
-    bytecodeHash: keccak256(validationImplArtifact.bytecode as Hex),
+    bytecodeHash: keccak256(validationImplBytecode),
   });
 
   console.log("Implementation addresses (deterministic via CREATE2):");
@@ -156,7 +136,7 @@ async function main() {
   console.log("");
 
   // Get MinimalUUPS ABI for upgradeToAndCall
-  const minimalUUPSArtifact = await hre.artifacts.readArtifact("MinimalUUPS");
+  const minimalUUPSAbi = artifactAbi("MinimalUUPS");
 
   console.log("=".repeat(80));
   console.log("PERFORMING UPGRADES");
@@ -188,16 +168,17 @@ async function main() {
     console.log("   Upgrading IdentityRegistry proxy...");
     // Encode initialize() call for the new implementation
     const identityInitData = encodeFunctionData({
-      abi: identityImplArtifact.abi,
+      abi: identityImplAbi,
       functionName: "initialize",
       args: []
     });
     const identityUpgradeData = encodeFunctionData({
-      abi: minimalUUPSArtifact.abi,
+      abi: minimalUUPSAbi,
       functionName: "upgradeToAndCall",
       args: [identityImpl, identityInitData]
     });
     const identityUpgradeTxHash = await ownerWallet.sendTransaction({
+      account: ownerAccount,
       to: identityProxyAddress,
       data: identityUpgradeData,
     });
@@ -220,16 +201,17 @@ async function main() {
     console.log("   Upgrading ReputationRegistry proxy...");
     // Encode initialize(address) call for the new implementation
     const reputationInitData = encodeFunctionData({
-      abi: reputationImplArtifact.abi,
+      abi: reputationImplAbi,
       functionName: "initialize",
       args: [identityProxyAddress]
     });
     const reputationUpgradeData = encodeFunctionData({
-      abi: minimalUUPSArtifact.abi,
+      abi: minimalUUPSAbi,
       functionName: "upgradeToAndCall",
       args: [reputationImpl, reputationInitData]
     });
     const reputationUpgradeTxHash = await ownerWallet.sendTransaction({
+      account: ownerAccount,
       to: reputationProxyAddress,
       data: reputationUpgradeData,
     });
@@ -252,16 +234,17 @@ async function main() {
     console.log("   Upgrading ValidationRegistry proxy...");
     // Encode initialize(address) call for the new implementation
     const validationInitData = encodeFunctionData({
-      abi: validationImplArtifact.abi,
+      abi: validationImplAbi,
       functionName: "initialize",
       args: [identityProxyAddress]
     });
     const validationUpgradeData = encodeFunctionData({
-      abi: minimalUUPSArtifact.abi,
+      abi: minimalUUPSAbi,
       functionName: "upgradeToAndCall",
       args: [validationImpl, validationInitData]
     });
     const validationUpgradeTxHash = await ownerWallet.sendTransaction({
+      account: ownerAccount,
       to: validationProxyAddress,
       data: validationUpgradeData,
     });

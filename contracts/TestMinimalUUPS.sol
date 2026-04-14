@@ -5,11 +5,11 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 /**
- * @title HardhatMinimalUUPS
+ * @title TestMinimalUUPS
  * @dev Test version of MinimalUUPS that uses msg.sender as owner.
- * Used for hardhat tests to follow the proxy -> MinimalUUPS -> upgrade pattern.
+ * Used by Foundry tests to follow the proxy -> MinimalUUPS -> upgrade pattern.
  */
-contract HardhatMinimalUUPS is OwnableUpgradeable, UUPSUpgradeable {
+contract TestMinimalUUPS is OwnableUpgradeable, UUPSUpgradeable {
     /// @dev Identity registry address stored at slot 0 (matches real implementations)
     address private _identityRegistry;
 
